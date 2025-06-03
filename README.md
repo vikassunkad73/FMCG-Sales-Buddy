@@ -1,4 +1,4 @@
-# Sales Coach Agent (MVP v2)
+# Sales Coach Agent (MVP)
 
 A WhatsApp-based intelligent sales assistant for Hindi-speaking field reps.
 
