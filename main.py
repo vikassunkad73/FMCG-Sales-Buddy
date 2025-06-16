@@ -54,23 +54,35 @@ def webhook():
 
 
 def find_reply(user_query):
-    print("We are now in the find_reply function")
     headers = {
         "Authorization": f"Bearer {AIRTABLE_PAT}",
         "Content-Type": "application/json"
     }
+
     url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}?maxRecords=50"
-    print(url)
     response = requests.get(url, headers=headers)
-    print("\n📦 Airtable Response:", response.text)
+    
+    print("\n📦 Airtable Response:", response.text)  # Debug log
+
+    if response.status_code != 200:
+        print("❌ Failed to fetch data from Airtable")
+        return "डाटा लोड करने में समस्या हो रही है। कृपया बाद में प्रयास करें।"
 
     records = response.json().get("records", [])
+
+    # Try exact match first
     for record in records:
-        question = record["fields"].get("Question", "")
-        if user_query.strip().lower() in question.lower():
+        question = record["fields"].get("Question", "").strip().lower()
+        if user_query.strip().lower() == question:
             return record["fields"].get("Refined Answer (Hindi)", "उत्तर उपलब्ध नहीं है।")
-        else:
-            return "माफ़ कीजिए, मैं इस प्रश्न का उत्तर नहीं ढूंढ पाया।"
+
+    # Try partial match next
+    for record in records:
+        question = record["fields"].get("Question", "").strip().lower()
+        if question in user_query.strip().lower():
+            return record["fields"].get("Refined Answer (Hindi)", "उत्तर उपलब्ध नहीं है।")
+
+    return "माफ़ कीजिए, मैं इस प्रश्न का उत्तर नहीं ढूंढ पाया।"
 
 
 def send_message(to_number, message):
