@@ -1,68 +1,88 @@
-from flask import Flask, request, abort
-from sheet_lookup import get_response_for_intent
-from twilio.twiml.messaging_response import MessagingResponse
-from openai import Completion, api_key
+from flask import Flask, request, jsonify
+import requests
 import os
+import json
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-api_key = os.getenv("OPENAI_API_KEY")
 
-# List of valid intent tags
-INTENT_TAGS = [
-    "retailer_no_demand_maaza",
-    "improve_visibility_low_performance",
-    "drive_brand_pack",
-    "cooler_purity_issue",
-    "default_fallback"
-]
+VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
-def detect_intent_with_gpt(message):
-    import openai
-    openai.api_key = api_key
+AIRTABLE_PAT = os.getenv("AIRTABLE_PAT")
+AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID")
+AIRTABLE_TABLE_NAME = os.getenv("AIRTABLE_TABLE_NAME")
 
-    prompt = f"""You are a sales assistant helping field sales reps.
-Given the following message (in Hindi or English), classify it into one of these intent tags:
-{', '.join(INTENT_TAGS)}
+@app.route('/webhook', methods=['GET'])
+def verify():
+    if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.challenge"):
+        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
+            return request.args["hub.challenge"], 200
+        return "Verification token mismatch", 403
+    return "Hello world", 200
 
-Message: \"{message}\"
-Intent tag:
-"""
-    try:
-        response = openai.Completion.create(
-            engine="text-davinci-003",
-            prompt=prompt,
-            max_tokens=15,
-            temperature=0
-        )
-        intent = response.choices[0].text.strip()
-        return intent if intent in INTENT_TAGS else "default_fallback"
-    except Exception as e:
-        return "default_fallback"
 
 @app.route('/webhook', methods=['POST'])
-def whatsapp_webhook():
-    incoming_msg = request.values.get('Body', '').strip()
-    sender = request.values.get('From', '')
+def webhook():
+    data = request.get_json()
+    try:
+        for entry in data.get("entry", []):
+            for change in entry.get("changes", []):
+                value = change.get("value", {})
+                messages = value.get("messages", [])
+                for message in messages:
+                    phone_number = message.get("from")
+                    text = message.get("text", {}).get("body", "")
 
-    intent = detect_intent_with_gpt(incoming_msg)
-    response_text = get_response_for_intent(intent)
+                    print(f"\n📩 Incoming message from {phone_number}: {text}")
 
-    # Fallback clarification
-    if intent == "default_fallback":
-        response_text = (
-            "माफ कीजिए, मैं पूरी तरह समझ नहीं पाया। क्या आप इनमें से किसी एक की बात कर रहे हैं?
-"
-            "👉 विजिबिलिटी की समस्या
-👉 माजा नहीं बिक रहा
-👉 कूलर स्टॉक
+                    if not text:
+                        send_message(phone_number, "माफ़ कीजिए, मैं सिर्फ़ टेक्स्ट मैसेज पढ़ सकता हूँ।")
+                        continue
 
-कृपया कीवर्ड भेजें।"
-        )
+                    reply_text = find_reply(text)
+                    print(f"💬 Replying with: {reply_text}")
+                    send_message(phone_number, reply_text)
 
-    resp = MessagingResponse()
-    msg = resp.message()
-    msg.body(response_text)
-    return str(resp)
+    except Exception as e:
+        print("❌ Error handling message:", e)
+
+    return "OK", 200
+
+
+def find_reply(user_query):
+    headers = {
+        "Authorization": f"Bearer {AIRTABLE_PAT}",
+        "Content-Type": "application/json"
+    }
+    url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}?maxRecords=50"
+    response = requests.get(url, headers=headers)
+    records = response.json().get("records", [])
+    for record in records:
+        question = record["fields"].get("Question", "")
+        if user_query.lower() in question.lower():
+            return record["fields"].get("Refined Answer (Hindi)", "उत्तर उपलब्ध नहीं है।")
+    return "माफ़ कीजिए, मैं इस प्रश्न का उत्तर नहीं ढूंढ पाया।"
+
+
+def send_message(to_number, message):
+    url = f"https://graph.facebook.com/v17.0/{PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_number,
+        "type": "text",
+        "text": {"body": message}
+    }
+    res = requests.post(url, headers=headers, json=payload)
+    print("📤 WhatsApp API Response:", res.text)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
