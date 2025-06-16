@@ -60,10 +60,13 @@ def find_reply(user_query):
     }
     url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}?maxRecords=50"
     response = requests.get(url, headers=headers)
+    
+    print("\n📦 Airtable Response:", response.text)
+
     records = response.json().get("records", [])
     for record in records:
         question = record["fields"].get("Question", "")
-        if user_query.lower() in question.lower():
+        if user_query.strip().lower() in question.lower():
             return record["fields"].get("Refined Answer (Hindi)", "उत्तर उपलब्ध नहीं है।")
     return "माफ़ कीजिए, मैं इस प्रश्न का उत्तर नहीं ढूंढ पाया।"
 
