@@ -54,13 +54,14 @@ def webhook():
 
 
 def find_reply(user_query):
+    print("We are now in the find_reply function")
     headers = {
         "Authorization": f"Bearer {AIRTABLE_PAT}",
         "Content-Type": "application/json"
     }
     url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}?maxRecords=50"
+    print(url)
     response = requests.get(url, headers=headers)
-    
     print("\n📦 Airtable Response:", response.text)
 
     records = response.json().get("records", [])
