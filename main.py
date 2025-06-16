@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import requests
 import os
 import json
+import difflib
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -61,26 +62,23 @@ def find_reply(user_query):
 
     url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}?maxRecords=50"
     response = requests.get(url, headers=headers)
-    
-    print("\n📦 Airtable Response:", response.text)  # Debug log
+
+    print("\n📦 Airtable Response:", response.text)
 
     if response.status_code != 200:
-        print("❌ Failed to fetch data from Airtable")
         return "डाटा लोड करने में समस्या हो रही है। कृपया बाद में प्रयास करें।"
 
     records = response.json().get("records", [])
+    questions = [record["fields"].get("Question", "") for record in records]
 
-    # Try exact match first
-    for record in records:
-        question = record["fields"].get("Question", "").strip().lower()
-        if user_query.strip().lower() == question:
-            return record["fields"].get("Refined Answer (Hindi)", "उत्तर उपलब्ध नहीं है।")
+    # Find best match
+    matches = difflib.get_close_matches(user_query, questions, n=1, cutoff=0.5)
 
-    # Try partial match next
-    for record in records:
-        question = record["fields"].get("Question", "").strip().lower()
-        if question in user_query.strip().lower():
-            return record["fields"].get("Refined Answer (Hindi)", "उत्तर उपलब्ध नहीं है।")
+    if matches:
+        best_match = matches[0]
+        for record in records:
+            if record["fields"].get("Question", "") == best_match:
+                return record["fields"].get("Refined Answer (Hindi)", "उत्तर उपलब्ध नहीं है।")
 
     return "माफ़ कीजिए, मैं इस प्रश्न का उत्तर नहीं ढूंढ पाया।"
 
